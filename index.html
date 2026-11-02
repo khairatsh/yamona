@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>هبوط نور</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;900&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#10213a;--gold:#ffc94a;--txt:#f4f8ff;--glass:rgba(16,33,58,.62);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;background:var(--ink);font-family:'Cairo',Tahoma,sans-serif;color:var(--txt);overflow:hidden;touch-action:none;user-select:none}
+canvas{display:block;width:100%;height:100%}
+.glass{background:var(--glass);backdrop-filter:blur(8px);border-radius:16px;padding:8px 14px}
+#stats{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));left:12px;font-weight:900;font-size:16px;line-height:1.55;min-width:150px}
+#top{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:12px;font-weight:900;font-size:16px;text-align:center;line-height:1.55}
+#hint{position:absolute;bottom:calc(96px + env(safe-area-inset-bottom,0px));width:100%;text-align:center;font-weight:900;font-size:22px;text-shadow:0 2px 8px #000;pointer-events:none}
+#bar{position:absolute;bottom:calc(14px + env(safe-area-inset-bottom,0px));left:12px;right:12px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+#bar>*{pointer-events:auto}
+.b{font:inherit;font-weight:900;font-size:19px;border:0;border-radius:16px;padding:14px 20px;background:var(--glass);color:var(--txt);backdrop-filter:blur(8px)}
+.b:active{transform:scale(.95)}
+#panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(16,33,58,.5);text-align:center;padding:20px}
+#panel.hide{display:none}
+h1{font-size:clamp(40px,11vw,76px);font-weight:900;margin:0;color:var(--gold);text-shadow:0 0 30px rgba(255,201,74,.55)}
+p{margin:0;font-size:17px;max-width:420px;line-height:1.75}
+#go{font:inherit;font-weight:900;font-size:22px;border:0;border-radius:40px;padding:12px 44px;background:var(--gold);color:var(--ink);cursor:pointer;margin-top:8px}
+#go:focus-visible,.b:focus-visible{outline:3px solid #fff;outline-offset:3px}
+</style>
+</head>
+<body>
+<div id="stats" class="glass"><div id="s1"></div><div id="s2"></div><div id="s3"></div><div id="s4"></div></div>
+<div id="top" class="glass"><div id="t1"></div><div id="t2"></div></div>
+<div id="hint"></div>
+<div id="bar"><div style="display:flex;gap:8px"><button id="tu" class="b">▲ محرك</button><button id="td" class="b">▼ محرك</button></div><div style="display:flex;gap:8px"><button id="cm" class="b" aria-label="الكاميرا">📷</button><button id="br" class="b">فرامل</button></div></div>
+<div id="fade" style="position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .6s"></div>
+<div id="panel"><h1 id="ttl">هبوط نور</h1><p id="msg">أنت واقف في المطار. شاهد الركاب وهم يصعدون، ثم أقلع وحلّق وهبّط بنعومة. الرحلات تتكرر بلا توقف.<br>الأسهم للتحكم، W/S للمحرك، Space فرامل، C للكاميرا. بالجوال اسحب بإصبعك.</p><button id="go">ابدأ الرحلة</button></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=id=>document.getElementById(id),ar=n=>String(n).replace(/\d/g,d=>'٠١٢٣٤٥٦٧٨٩'[d]);
+const V=THREE.Vector3,hp=Math.PI/2,cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+const R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(Math.min(devicePixelRatio||1,2));
+R.outputEncoding=THREE.sRGBEncoding;R.toneMapping=THREE.ACESFilmicToneMapping;R.toneMappingExposure=1.05;R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;document.body.prepend(R.domElement);
+const S=new THREE.Scene();S.fog=new THREE.Fog(0xcfe0f2,300,4200);
+const C=new THREE.PerspectiveCamera(62,1,.5,9000);S.add(C);
+function fit(){R.setSize(innerWidth,innerHeight);C.aspect=innerWidth/innerHeight;C.updateProjectionMatrix()}addEventListener('resize',fit);fit();
+S.add(new THREE.HemisphereLight(0xcfe6ff,0x6b7a55,.8));
+const sunDir=new V(.45,.4,-.8).normalize(),sun=new THREE.DirectionalLight(0xfff0d0,1.7);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera,{left:-90,right:90,top:90,bottom:-90,near:1,far:600});sun.shadow.bias=-.0005;S.add(sun,sun.target);
+const dome=new THREE.Mesh(new THREE.SphereGeometry(6000,32,16),new THREE.ShaderMaterial({side:THREE.BackSide,fog:false,depthWrite:false,uniforms:{sd:{value:sunDir}},
+vertexShader:'varying vec3 d;void main(){d=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+fragmentShader:'varying vec3 d;uniform vec3 sd;void main(){float h=max(d.y,0.);vec3 c=mix(vec3(.81,.88,.95),vec3(.18,.42,.78),pow(h,.55));float s=max(dot(d,sd),0.);c+=vec3(1.,.82,.5)*pow(s,24.)*.5+vec3(1.,.95,.8)*pow(s,900.)*3.;gl_FragColor=vec4(c,1.);}'}));S.add(dome);
+const std=(c,o)=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.7},o||{}));
+// ground
+const tc=document.createElement('canvas');tc.width=tc.height=512;const g2=tc.getContext('2d');g2.fillStyle='#7a9455';g2.fillRect(0,0,512,512);
+const cols=['#6d8a4b','#8fa263','#a89d6c','#5f7d45','#b5a874'];for(let i=0;i<260;i++){g2.globalAlpha=.22;g2.fillStyle=cols[i%5];g2.beginPath();g2.arc(Math.random()*512,Math.random()*512,10+Math.random()*50,0,7);g2.fill()}
+const gt=new THREE.CanvasTexture(tc);gt.wrapS=gt.wrapT=THREE.RepeatWrapping;gt.repeat.set(20,20);gt.encoding=THREE.sRGBEncoding;gt.anisotropy=8;
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(12000,12000),new THREE.MeshStandardMaterial({map:gt,roughness:1}));ground.rotation.x=-hp;ground.receiveShadow=true;S.add(ground);
+// airport
+function box(w,h,d,m,x,y,z){const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);b.position.set(x,y,z);b.castShadow=b.receiveShadow=true;S.add(b);return b}
+box(44,.3,1300,std(0x2c2f36,{roughness:.9}),0,.1,0);
+const wm=std(0xffffff,{emissive:0x888888});
+for(let i=-30;i<=30;i++)box(1.2,.35,14,wm,0,.2,i*20);
+for(const s of[-1,1])box(.8,.35,1300,wm,s*21,.2,0);
+for(const z of[-612,612])for(let x=-18;x<=18;x+=3.6)if(Math.abs(x)>1)box(1.5,.35,18,wm,x,.2,z);
+{const c=document.createElement('canvas');c.width=128;c.height=160;const x=c.getContext('2d');x.fillStyle='#fff';x.font='bold 120px Arial';x.textAlign='center';x.fillText('27',64,125);const tx=new THREE.CanvasTexture(c);
+for(const[z,r]of[[-560,Math.PI],[560,0]]){const m=new THREE.Mesh(new THREE.PlaneGeometry(16,20),new THREE.MeshBasicMaterial({map:tx,transparent:true}));m.rotation.set(-hp,0,r);m.position.set(0,.32,z);S.add(m)}
+const m2=new THREE.Mesh(new THREE.PlaneGeometry(10,14),new THREE.MeshBasicMaterial({color:0xffd24a,transparent:true,opacity:.0}));S.add(m2)}
+for(const z of[420,450,480])box(10,.35,3,std(0xffffff),0,.22,z);
+box(112,.3,24,std(0x3a3d45),78,.12,100);box(160,.3,90,std(0x555a63),115,.1,100);
+box(120,18,36,std(0x9ec3e0,{metalness:.7,roughness:.2}),115,9,100);box(126,2,42,std(0xffffff),115,19,100);
+const tw=new THREE.Mesh(new THREE.CylinderGeometry(3,4,50,16),std(0xeeeeee));tw.position.set(200,25,40);tw.castShadow=true;S.add(tw);
+const cab=new THREE.Mesh(new THREE.CylinderGeometry(7.5,5.5,8,16),std(0x9ec3e0,{metalness:.7,roughness:.2}));cab.position.set(200,54,40);S.add(cab);
+// PAPI lights
+const papi=[];for(let i=0;i<4;i++){const l=new THREE.Mesh(new THREE.SphereGeometry(1.2,10,8),new THREE.MeshBasicMaterial({color:0xffffff}));l.position.set(-30-i*3.5,1.2,430);S.add(l);papi.push(l)}
+// trees + mountains
+{const tm=new THREE.InstancedMesh(new THREE.ConeGeometry(3,10,7),std(0x2f5a2c),260),M=new THREE.Matrix4();
+for(let i=0;i<260;i++){let x,z;do{x=(Math.random()<.5?-1:1)*(70+Math.random()*500);z=-900+Math.random()*3400}while(x>30&&x<270&&z>5&&z<200);const k=.7+Math.random()*1.1;M.makeScale(k,k,k);M.setPosition(x,5*k,z);tm.setMatrixAt(i,M)}tm.castShadow=true;S.add(tm)}
+for(let i=0;i<40;i++){const a=Math.random()*6.283,r=2600+Math.random()*1800,h=120+Math.random()*320;const m=new THREE.Mesh(new THREE.ConeGeometry(h*.9,h,7),std(new THREE.Color().setHSL(.1,.2,.3+Math.random()*.1),{flatShading:true}));m.position.set(Math.cos(a)*r,h/2,Math.sin(a)*r+800);S.add(m)}
+const cmat=std(0xffffff,{emissive:0x666677,transparent:true,opacity:.92});
+for(let i=0;i<40;i++){const g=new THREE.Group();for(let k=0;k<5;k++){const s=new THREE.Mesh(new THREE.SphereGeometry(20+Math.random()*20,10,8),cmat);s.position.set((k-2)*28,Math.random()*10,Math.random()*20);s.scale.y=.55;g.add(s)}g.position.set((Math.random()-.5)*5000,420+Math.random()*300,(Math.random()-.5)*5000+800);S.add(g)}
+// jet
+const jet=new THREE.Group(),W=std(0xf7f9fc,{metalness:.25,roughness:.35}),GD=std(0xffc94a,{metalness:.4,roughness:.3}),DK=std(0x1d2a44,{roughness:.2,metalness:.5});
+function add(g,m,x,y,z,rx,ry,rz){const o=new THREE.Mesh(g,m);o.position.set(x,y,z);o.rotation.set(rx||0,ry||0,rz||0);o.castShadow=true;jet.add(o);return o}
+add(new THREE.CylinderGeometry(1.4,1.4,12,24),W,0,0,0,hp);add(new THREE.SphereGeometry(1.4,24,16),W,0,0,-6).scale.z=2.2;
+add(new THREE.CylinderGeometry(.35,1.4,6,24),W,0,.25,9,hp);add(new THREE.BoxGeometry(2,.5,.9),DK,0,.6,-8.3);add(new THREE.BoxGeometry(2.83,.35,11),GD,0,-.2,0);
+for(const s of[-1,1]){add(new THREE.BoxGeometry(12,.28,3.4),W,s*7.4,-.5,1.6,0,-s*.5,s*.05);add(new THREE.BoxGeometry(.2,1.8,1.6),GD,s*12.6,.5,4.6,0,-s*.5,0);
+add(new THREE.CylinderGeometry(.95,.95,4,18),W,s*5.2,-1.5,-.2,hp);add(new THREE.CylinderGeometry(.96,.96,.5,18),DK,s*5.2,-1.5,-2.2,hp);add(new THREE.BoxGeometry(6,.2,2),W,s*3.6,.5,8.6,0,-s*.5,0);
+add(new THREE.SphereGeometry(.3,8,8),new THREE.MeshBasicMaterial({color:s>0?0x33ff66:0xff3344}),s*12.5,.2,4.3);for(let i=0;i<22;i++)add(new THREE.BoxGeometry(.06,.34,.26),DK,s*1.33,.45,-4.6+i*.42)}
+add(new THREE.BoxGeometry(.28,5,4.4),GD,0,3.4,8.2,.35,0,0);
+for(const[gx,gz,n]of[[0,-6,1],[-2.4,1.5,2],[2.4,1.5,2]]){const sr=new THREE.Mesh(new THREE.CylinderGeometry(.12,.12,1.7,8),W);sr.position.set(gx,-2.2,gz);jet.add(sr);
+for(let q=0;q<n;q++){const w=new THREE.Mesh(new THREE.CylinderGeometry(.5,.5,.35,16),DK);w.rotation.z=hp;w.position.set(gx+(n>1?(q?.3:-.3):0),-3,gz);w.castShadow=true;jet.add(w)}}
+jet.scale.setScalar(.5);S.add(jet);
+// gate area, stairs, passengers
+box(30,.3,36,std(0x555a63),-34,.12,560);
+box(20,9,16,std(0x9ec3e0,{metalness:.7,roughness:.2}),-44,4.5,560);box(22,1.5,18,std(0xffffff),-44,9.5,560);
+const stairs=new THREE.Group(),sm=std(0xc9ced6,{metalness:.5,roughness:.4});
+{const a1=new THREE.Mesh(new THREE.BoxGeometry(3.9,.15,1.3),sm);a1.position.set(-2.9,.85,-1.5);a1.rotation.z=.4636;a1.castShadow=true;stairs.add(a1);
+const a2=new THREE.Mesh(new THREE.BoxGeometry(1.3,.15,1.3),sm);a2.position.set(-1,1.7,-1.5);stairs.add(a2);
+for(const z of[-2.1,-.9]){const r=new THREE.Mesh(new THREE.BoxGeometry(3.9,.06,.06),std(0xffc94a));r.position.set(-2.9,1.5,z);r.rotation.z=.4636;stairs.add(r)}}
+S.add(stairs);
+const pax=[],pcol=[0xd9534f,0x5bc0de,0xf0ad4e,0x5cb85c,0x9b59b6,0xe67e22,0x1abc9c,0xecf0f1];
+for(let i=0;i<8;i++){const g=new THREE.Group(),b=new THREE.Mesh(new THREE.CylinderGeometry(.2,.24,.9,10),std(pcol[i])),hd=new THREE.Mesh(new THREE.SphereGeometry(.15,10,8),std(0xe0b090)),lg=new THREE.Mesh(new THREE.CylinderGeometry(.14,.14,.4,8),std(0x2b3350));
+b.position.y=.75;hd.position.y=1.38;lg.position.y=.2;b.castShadow=true;g.add(b,hd,lg);g.visible=false;S.add(g);pax.push({g,d:0,path:[],len:[0]})}
+// game state
+let st='menu',seq='idle',seqT=0,P=new V(0,0,560),h=0,pit=0,rol=0,spd=0,thr=0,vy=0,onG=true,wind=0,cam=0,T=0,flew=false,flights=0;
+let tu=0,td=0,brk=0,dRoll=0,dPit=0,ox=0,oy=0,drag=false;const keys={};
+function hint(t,ms){$('hint').textContent=t;clearTimeout(hint.t);if(ms)hint.t=setTimeout(()=>$('hint').textContent='',ms)}
+const loc=(lx,ly,lz)=>new V(P.x+Math.cos(h)*lx-Math.sin(h)*lz,ly,P.z+Math.sin(h)*lx+Math.cos(h)*lz);
+function teleport(){P.set(0,0,560);h=0;pit=0;rol=0;spd=0;thr=0;vy=0;onG=true;flew=false}
+function startSeq(kind){seq=kind;seqT=0;pax.forEach((p,i)=>{p.d=i*.9;const base=[[-26,0,-1.5+((i%3)-1)*.8],[-4.6,0,-1.5],[-1.2,1.75,-1.5],[-.3,1.75,-1.5]];
+p.path=kind==='board'?base:base.slice().reverse();p.len=[0];for(let k=1;k<base.length;k++){const a=p.path[k-1],b=p.path[k];p.len.push(p.len[k-1]+Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]))}p.g.visible=false});
+hint(kind==='board'?'الركاب يصعدون إلى الطائرة...':'الركاب ينزلون...',0)}
+function toFade(msg){seq='fade';seqT=0;spd=0;thr=0;if(msg)hint(msg,4000);$('fade').style.opacity=1}
+function crash(w){toFade(w+' — نعيدك إلى المطار')}
+function seqStep(dt){seqT+=dt;
+if(seq==='fade'){if(seqT>.9){teleport();startSeq('board');$('fade').style.opacity=0}return}
+if(seq!=='board'&&seq!=='deplane')return;
+let done=0;for(const p of pax){const t=seqT-p.d,L=p.len[p.len.length-1];
+if(t<0){p.g.visible=false;continue}const dist=t*3.4;if(dist>=L){p.g.visible=false;done++;continue}
+let k=1;while(p.len[k]<dist)k++;const a=p.path[k-1],b=p.path[k],f=(dist-p.len[k-1])/(p.len[k]-p.len[k-1]);
+const w=loc(a[0]+(b[0]-a[0])*f,0,a[2]+(b[2]-a[2])*f);w.y=a[1]+(b[1]-a[1])*f+Math.abs(Math.sin(dist*3))*.05;p.g.position.copy(w);
+const w2=loc(b[0],0,b[2]);p.g.rotation.y=Math.atan2(w2.x-w.x,w2.z-w.z);p.g.visible=true}
+if(done===pax.length){if(seq==='board'){seq='ready';hint('الركاب على متن الطائرة — اضغط W للمحرك ثم ▲ للإقلاع',9000)}else toFade()}}
+$('go').onclick=()=>{$('panel').classList.add('hide');st='fly';teleport();startSeq('board')};
+for(const[id,f]of[['tu',v=>tu=v],['td',v=>td=v],['br',v=>brk=v]]){const e=$(id);e.addEventListener('pointerdown',ev=>{f(1);ev.stopPropagation()});for(const n of['pointerup','pointerleave','pointercancel'])e.addEventListener(n,()=>f(0))}
+$('cm').onclick=()=>{cam=1-cam};
+const cv=R.domElement;cv.addEventListener('pointerdown',e=>{drag=true;ox=e.clientX;oy=e.clientY});
+cv.addEventListener('pointermove',e=>{if(drag){dRoll=cl((e.clientX-ox)/80,-1,1);dPit=cl((oy-e.clientY)/80,-1,1)}});
+for(const n of['pointerup','pointercancel'])addEventListener(n,()=>{drag=false;dRoll=dPit=0});
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();keys[k]=1;if(k==='c')cam=1-cam;if(st==='menu'&&e.key==='Enter')$('go').click()});addEventListener('keyup',e=>keys[e.key.toLowerCase()]=0);
+const clock=new THREE.Clock();
+function loop(){requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),.05);T+=dt;
+if(st==='fly'){seqStep(dt);
+const ctl=seq==='ready'||seq==='air';
+if(ctl){
+const rI=(keys.arrowright||keys.d?1:0)-(keys.arrowleft||keys.a?1:0)||dRoll,pI=(keys.arrowup?1:0)-(keys.arrowdown?1:0)||dPit,brake=keys[' ']||brk;
+thr=cl(thr+((keys.w||tu?1:0)-(keys.s||td?1:0))*dt*.35,0,1);
+if(!onG){pit+=(pI*.3-pit)*dt*2;rol+=(rI*.7-rol)*dt*2.5;h+=rol*dt*.5;spd+=(thr*105-spd)*dt*.16-Math.sin(pit)*16*dt;spd=cl(spd,30,140);
+vy=Math.sin(pit)*spd-(spd<52?(52-spd)*.9:0);
+const f=Math.cos(pit)*spd*dt;P.x+=Math.sin(h)*f+wind*dt;P.z-=Math.cos(h)*f;P.y+=vy*dt;
+if(P.y<=0){P.y=0;const dr=-vy,onR=Math.abs(P.x)<22&&Math.abs(P.z)<650,al=Math.abs(Math.sin(h));
+if(!onR)return crash('هبطت خارج المدرج');if(dr>6.5)return crash('هبوط عنيف جدًا');if(spd>100||Math.abs(rol)>.3||al>.2)return crash('سرعة عالية أو ميل زائد عند اللمس');
+onG=true;rol=0;pit=0;hint(dr<2.5?'هبوط ناعم جدًا ✨ — اضغط فرامل (Space)':dr<4.5?'هبوط جيد — اضغط فرامل (Space)':'هبوط خشن — اضغط فرامل (Space)',5000)}
+if(P.y>5000)P.y=5000;if(P.z<-1500||P.z>4000||Math.abs(P.x)>3500)return crash('ابتعدت كثيرًا عن المطار')}
+else{spd+=(thr*105-spd)*dt*.16;spd=Math.max(0,spd-(5+(brake?40:0)+(thr<.05?8:0))*dt);h+=rI*.4*dt*Math.min(spd/25,1);
+P.x+=Math.sin(h)*spd*dt;P.z-=Math.cos(h)*spd*dt;vy=0;
+if(seq==='ready'&&spd>=68&&pI>.1){onG=false;flew=true;seq='air';pit=.1;wind=(Math.random()<.5?-1:1)*(2+Math.random()*5);hint('',0)}
+if(spd>14&&(Math.abs(P.x)>24||Math.abs(P.z)>655))return crash('خرجت عن المدرج');
+if(seq==='air'&&flew&&spd<1.5){flights++;startSeq('deplane')}}
+const gp=(P.z-450)*.0524+10,e2=P.y-gp;papi.forEach((l,i)=>l.material.color.set(e2>(i-1.5)*4?0xffffff:0xff2a2a))}
+$('s1').textContent='السرعة: '+ar(Math.round(spd*3.6))+' كم/س';$('s2').textContent='الارتفاع: '+ar(Math.round(P.y))+' م';
+$('s3').textContent='معدل النزول: '+ar(Math.max(0,-vy).toFixed(1))+' م/ث';$('s4').textContent='المحرك: '+ar(Math.round(thr*100))+'٪';
+$('t1').textContent='الرحلات: '+ar(flights)+' — الركاب: ٨';$('t2').textContent=wind?('الرياح: '+(wind>0?'تدفعك يمينًا ':'تدفعك يسارًا ')+ar(Math.abs(wind).toFixed(0))+' م/ث'):''}
+// poses
+jet.position.set(P.x,P.y+2,P.z);jet.rotation.order='YXZ';jet.rotation.set(onG?0:pit,-h,-rol);
+stairs.visible=(seq==='board'||seq==='deplane'||seq==='idle');stairs.position.set(P.x,0,P.z);stairs.rotation.y=-h;
+const fw=new V(Math.sin(h),0,-Math.cos(h));
+if(st==='fly'&&(seq==='board'||seq==='deplane'||seq==='fade'&&onG)){const w=loc(-17,6,-5);C.position.lerp(w,1-Math.exp(-dt*3));C.lookAt(loc(-3,1.5,-1.5))}
+else if(st==='fly'&&cam){C.position.set(P.x+fw.x*3.4,P.y+2.4,P.z+fw.z*3.4);C.lookAt(P.x+fw.x*80,P.y+2.4+pit*60,P.z+fw.z*80)}
+else if(st==='fly'){const want=new V(P.x,P.y,P.z).addScaledVector(fw,-24).add(new V(0,6.5,0));C.position.lerp(want,1-Math.exp(-dt*5));C.lookAt(P.x+fw.x*40,P.y+3+pit*10,P.z+fw.z*40)}
+else{const a=T*.15;C.position.set(P.x+Math.sin(a)*50,P.y+10,P.z+Math.cos(a)*50);C.lookAt(P.x,P.y+3,P.z)}
+C.fov=62+Math.min(spd/140,1)*6;C.updateProjectionMatrix();
+dome.position.copy(C.position);ground.position.set(C.position.x,0,C.position.z);gt.offset.set(C.position.x/600,-C.position.z/600);
+sun.position.set(P.x+sunDir.x*200,P.y+sunDir.y*200,P.z+sunDir.z*200);sun.target.position.set(P.x,0,P.z);sun.target.updateMatrixWorld();
+R.render(S,C)}
+loop();
+</script>
+</body>
+</html>
